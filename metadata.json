@@ -1,0 +1,9 @@
+{
+  "uuid": "linnin-topbar-text@linnin",
+  "name": "Linnin TopBar Text",
+  "description": "Display custom text in the top bar with dynamic updates",
+  "version": 1,
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "",
+  "settings-schema": "org.gnome.shell.extensions.linnin-topbar-text"
+}

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.linnin-topbar-text" path="/org/gnome/shell/extensions/linnin-topbar-text/">
+    <key name="text" type="s">
+      <default>"CPU: {cpu} | 内存: {memory} {okbang}"</default>
+      <summary>Text to display</summary>
+      <description>The text to display in the top bar</description>
+    </key>
+    <key name="position" type="s">
+      <default>"right"</default>
+      <summary>Position</summary>
+      <description>Position of the text: left, center, or right</description>
+    </key>
+    <key name="update-interval" type="i">
+      <default>1</default>
+      <summary>Update interval</summary>
+      <description>Update interval in seconds</description>
+    </key>
+    <key name="enable-dynamic" type="b">
+      <default>true</default>
+      <summary>Enable dynamic variables</summary>
+      <description>Enable dynamic variables like {time}, {date}, {cpu}, {memory}</description>
+    </key>
+    <key name="api-url" type="s">
+      <default>"https://linnin.cn/api/sentence"</default>
+      <summary>API URL</summary>
+      <description>URL to fetch sentence from</description>
+    </key>
+    <key name="api-interval" type="i">
+      <default>60</default>
+      <summary>API fetch interval</summary>
+      <description>Interval to fetch sentence from API in seconds</description>
+    </key>
+    <key name="sentence-text" type="s">
+      <default>""</default>
+      <summary>Sentence text</summary>
+      <description>Fetched sentence text</description>
+    </key>
+    <key name="sentence-from" type="s">
+      <default>""</default>
+      <summary>Sentence from</summary>
+      <description>Fetched sentence source</description>
+    </key>
+  </schema>
+</schemalist>
