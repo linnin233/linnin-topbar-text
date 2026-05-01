@@ -6,27 +6,28 @@ import Gio from 'gi://Gio';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
-import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const TopBarTextIndicator = GObject.registerClass(
-    class TopBarTextIndicator extends PanelMenu.Button {
+    class TopBarTextIndicator extends St.Button {
         _init(settings) {
-            super._init(0.0, 'Linnin TopBar Text');
+            super._init({
+                reactive: true,
+                can_focus: true,
+                track_hover: true,
+                style_class: 'panel-button',
+            });
 
             this._settings = settings;
             this._label = new St.Label({
                 text: '',
                 y_align: Clutter.ActorAlign.CENTER,
-                style_class: 'panel-button',
             });
-            this.add_child(this._label);
-
-            this._buildMenu();
+            this.set_child(this._label);
 
             this._timeoutId = null;
             this._apiTimeoutId = null;
             this._settingsConnections = [];
+            this._menuOpen = false;
 
             this._sentenceText = this._settings.get_string('sentence-text') || '';
             this._sentenceFrom = this._settings.get_string('sentence-from') || '';
@@ -44,62 +45,56 @@ const TopBarTextIndicator = GObject.registerClass(
                 this._settings.connect('changed::api-interval', () => this._startApiTimer())
             );
 
+            this.connect('clicked', () => this._showMenu());
+
             this._updateText();
             this._startTimer();
             this._fetchSentence();
             this._startApiTimer();
         }
 
-        _buildMenu() {
-            const menu = this.menu;
+        _showMenu() {
+            const [x, y] = this.get_transformed_position();
+            const height = this.get_height();
 
-            const refreshItem = new PopupMenu.PopupMenuItem('刷新句子');
-            refreshItem.connect('activate', () => {
+            const menu = new PopupMenu();
+            menu.addAction('刷新句子', () => {
                 this._fetchSentence();
             });
-            menu.addMenuItem(refreshItem);
-
-            const copyItem = new PopupMenu.PopupMenuItem('复制文本');
-            copyItem.connect('activate', () => {
-                const text = this._label.get_text();
-                const clipboard = St.Clipboard.get_default();
-                clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
+            menu.addAction('复制文本', () => {
+                St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, this._label.get_text());
             });
-            menu.addMenuItem(copyItem);
-
-            menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-            const dynamicItem = new PopupMenu.PopupSwitchMenuItem(
-                '动态变量', this._settings.get_boolean('enable-dynamic')
-            );
-            dynamicItem.connect('toggled', (item) => {
-                this._settings.set_boolean('enable-dynamic', item.state);
+            menu.addSeparator();
+            menu.addToggle('动态变量', this._settings.get_boolean('enable-dynamic'), (checked) => {
+                this._settings.set_boolean('enable-dynamic', checked);
                 this._updateText();
                 this._startTimer();
             });
-            this._settings.connect('changed::enable-dynamic', () => {
-                dynamicItem.setToggleState(this._settings.get_boolean('enable-dynamic'));
+            menu.addSeparator();
+            menu.addAction('扩展设置', () => {
+                try {
+                    Gio.DBus.session.call(
+                        'org.gnome.Shell',
+                        '/org/gnome/Shell',
+                        'org.gnome.Shell.Extensions',
+                        'LaunchExtensionPrefs',
+                        new GLib.Variant('(su)', ['linnin-topbar-text@linnin', '']),
+                        null,
+                        Gio.DBusCallFlags.NONE,
+                        -1,
+                        null,
+                        null
+                    );
+                } catch (e) {}
             });
-            menu.addMenuItem(dynamicItem);
 
-            menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-            const settingsItem = new PopupMenu.PopupMenuItem('扩展设置');
-            settingsItem.connect('activate', () => {
-                Gio.DBus.session.call(
-                    'org.gnome.Shell',
-                    '/org/gnome/Shell',
-                    'org.gnome.Shell.Extensions',
-                    'LaunchExtensionPrefs',
-                    new GLib.Variant('(su)', ['linnin-topbar-text@linnin', '']),
-                    null,
-                    Gio.DBusCallFlags.NONE,
-                    -1,
-                    null,
-                    null
-                );
+            const source = new Clutter.Geometry({
+                x: x + 4,
+                y: y + height,
+                width: 1,
+                height: 1,
             });
-            menu.addMenuItem(settingsItem);
+            menu.open(source);
         }
 
         _startTimer() {
@@ -222,8 +217,8 @@ const TopBarTextIndicator = GObject.registerClass(
                 text = text.replace(/{date}/g, now.toLocaleDateString());
                 text = text.replace(/{cpu}/g, `${this._getCpuUsage()}%`);
                 text = text.replace(/{memory}/g, `${this._getMemoryUsage()}%`);
-                
-                const okbangDisplay = this._sentenceText ? 
+
+                const okbangDisplay = this._sentenceText ?
                     `${this._sentenceText}${this._sentenceFrom ? ' —— ' + this._sentenceFrom : ''}` : '';
                 text = text.replace(/{okbang}/g, okbangDisplay);
             }
@@ -249,6 +244,95 @@ const TopBarTextIndicator = GObject.registerClass(
     }
 );
 
+// Simple popup menu using St.BoxLayout
+class PopupMenu {
+    constructor() {
+        this._box = new St.BoxLayout({
+            vertical: true,
+            style_class: 'popup-menu-content',
+            reactive: true,
+        });
+        this._container = new St.BoxLayout({
+            style_class: 'popup-menu-boxpointer',
+            reactive: true,
+            visible: false,
+        });
+        this._container.add_child(this._box);
+        Main.layoutManager.addTopChrome(this._container);
+    }
+
+    addAction(label, callback) {
+        const item = new St.Button({
+            style_class: 'popup-menu-item',
+            reactive: true,
+            track_hover: true,
+            can_focus: true,
+            x_expand: true,
+        });
+        const lbl = new St.Label({
+            text: label,
+            margin_left: 12,
+            margin_right: 12,
+            margin_top: 6,
+            margin_bottom: 6,
+        });
+        item.set_child(lbl);
+        item.connect('clicked', () => {
+            this.close();
+            callback();
+        });
+        this._box.add_child(item);
+    }
+
+    addToggle(label, checked, callback) {
+        const item = new St.Button({
+            style_class: 'popup-menu-item',
+            reactive: true,
+            track_hover: true,
+            can_focus: true,
+            x_expand: true,
+        });
+        const hbox = new St.BoxLayout({
+            margin_left: 12,
+            margin_right: 12,
+            margin_top: 6,
+            margin_bottom: 6,
+        });
+        const lbl = new St.Label({ text: label, x_expand: true });
+        const toggle = new St.Label({ text: checked ? '✓' : '  ' });
+        hbox.add_child(lbl);
+        hbox.add_child(toggle);
+        item.set_child(hbox);
+        item.connect('clicked', () => {
+            this.close();
+            callback(!checked);
+        });
+        this._box.add_child(item);
+    }
+
+    addSeparator() {
+        this._box.add_child(new St.Widget({
+            style_class: 'popup-separator-menu-item',
+            height: 1,
+        }));
+    }
+
+    open(source) {
+        this._container.set_position(source.x, source.y);
+        this._container.show();
+        this._grab = Main.pushModal(this._container);
+        this._container.connect('button-press-event', () => this.close());
+    }
+
+    close() {
+        this._container.hide();
+        if (this._grab) {
+            Main.popModal(this._grab);
+            this._grab = null;
+        }
+    }
+}
+
 export default class LinninTopBarTextExtension extends Extension {
     constructor(metadata) {
         super(metadata);
@@ -266,7 +350,7 @@ export default class LinninTopBarTextExtension extends Extension {
 
         this._positionConnection = this._settings.connect('changed::position', () => {
             const newPos = this._settings.get_string('position');
-            this._indicator.container.get_parent()?.remove_child(this._indicator.container);
+            this._indicator.get_parent()?.remove_child(this._indicator);
             this._addToPanel(newPos);
         });
     }
@@ -275,7 +359,7 @@ export default class LinninTopBarTextExtension extends Extension {
         const panelBox = position === 'left' ? Main.panel._leftBox :
                         position === 'center' ? Main.panel._centerBox :
                         Main.panel._rightBox;
-        panelBox.add_child(this._indicator.container);
+        panelBox.add_child(this._indicator);
     }
 
     disable() {
