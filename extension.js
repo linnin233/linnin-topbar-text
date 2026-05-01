@@ -318,7 +318,8 @@ class PopupMenu {
     }
 
     open(source) {
-        this._container.set_position(source.x, source.y);
+        const [sx, sy] = this._container.get_transformed_position();
+        this._container.set_position(source.x, source.y - sy);
         this._container.show();
         this._grab = Main.pushModal(this._container);
         this._container.connect('button-press-event', () => this.close());
