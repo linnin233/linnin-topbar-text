@@ -7,6 +7,7 @@ import Gio from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const TopBarTextIndicator = GObject.registerClass(
     class TopBarTextIndicator extends PanelMenu.Button {
@@ -20,6 +21,8 @@ const TopBarTextIndicator = GObject.registerClass(
                 style_class: 'panel-button',
             });
             this.add_child(this._label);
+
+            this._buildMenu();
 
             this._timeoutId = null;
             this._apiTimeoutId = null;
@@ -45,6 +48,58 @@ const TopBarTextIndicator = GObject.registerClass(
             this._startTimer();
             this._fetchSentence();
             this._startApiTimer();
+        }
+
+        _buildMenu() {
+            const menu = this.menu;
+
+            const refreshItem = new PopupMenu.PopupMenuItem('刷新句子');
+            refreshItem.connect('activate', () => {
+                this._fetchSentence();
+            });
+            menu.addMenuItem(refreshItem);
+
+            const copyItem = new PopupMenu.PopupMenuItem('复制文本');
+            copyItem.connect('activate', () => {
+                const text = this._label.get_text();
+                const clipboard = St.Clipboard.get_default();
+                clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
+            });
+            menu.addMenuItem(copyItem);
+
+            menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+            const dynamicItem = new PopupMenu.PopupSwitchMenuItem(
+                '动态变量', this._settings.get_boolean('enable-dynamic')
+            );
+            dynamicItem.connect('toggled', (item) => {
+                this._settings.set_boolean('enable-dynamic', item.state);
+                this._updateText();
+                this._startTimer();
+            });
+            this._settings.connect('changed::enable-dynamic', () => {
+                dynamicItem.setToggleState(this._settings.get_boolean('enable-dynamic'));
+            });
+            menu.addMenuItem(dynamicItem);
+
+            menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+            const settingsItem = new PopupMenu.PopupMenuItem('扩展设置');
+            settingsItem.connect('activate', () => {
+                Gio.DBus.session.call(
+                    'org.gnome.Shell',
+                    '/org/gnome/Shell',
+                    'org.gnome.Shell.Extensions',
+                    'LaunchExtensionPrefs',
+                    new GLib.Variant('(su)', ['linnin-topbar-text@linnin', '']),
+                    null,
+                    Gio.DBusCallFlags.NONE,
+                    -1,
+                    null,
+                    null
+                );
+            });
+            menu.addMenuItem(settingsItem);
         }
 
         _startTimer() {
